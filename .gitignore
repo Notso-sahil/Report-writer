@@ -1,0 +1,15 @@
+# Build Artifacts
+Final_*.docx
+*.pdf
+merged_draft.md
+project_blueprint.md
+project_audit.md
+
+# Python
+__pycache__/
+*.pyc
+
+# IDEs / OS
+.vscode/
+.DS_Store
+Thumbs.db
