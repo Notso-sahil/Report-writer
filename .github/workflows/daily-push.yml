@@ -1,0 +1,72 @@
+name: Daily Automated 5-Commits Push
+
+on:
+  schedule:
+    # Runs everyday at 04:00 UTC (09:30 AM IST)
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      commit_count:
+        description: 'Number of commits to push today'
+        required: false
+        default: '5'
+
+permissions:
+  contents: write
+
+jobs:
+  push-daily-commits:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Advance main branch by scheduled commits
+        run: |
+          # Fetch both branches to ensure latest refs
+          git fetch origin release-queue:refs/remotes/origin/release-queue main:refs/remotes/origin/main || true
+          
+          # Check if release-queue exists on origin
+          if ! git rev-parse --verify origin/release-queue >/dev/null 2>&1; then
+            echo "Branch 'origin/release-queue' not found. Exiting."
+            exit 0
+          fi
+
+          # Switch to main branch
+          git checkout main
+          git reset --hard origin/main
+
+          # List pending commits in chronological order (oldest first)
+          PENDING_COMMITS=$(git log --reverse --format="%H" origin/main..origin/release-queue)
+
+          if [ -z "$PENDING_COMMITS" ]; then
+            echo "All commits from release-queue have already been pushed to main!"
+            exit 0
+          fi
+
+          BATCH_SIZE="${{ github.event.inputs.commit_count || '5' }}"
+          echo "Requested batch size: $BATCH_SIZE"
+
+          # Select the target commit up to batch size
+          TARGET_COMMIT=$(echo "$PENDING_COMMITS" | head -n "$BATCH_SIZE" | tail -n 1)
+          ACTUAL_COUNT=$(echo "$PENDING_COMMITS" | head -n "$BATCH_SIZE" | wc -l | tr -d ' ')
+
+          echo "Target commit hash: $TARGET_COMMIT"
+          echo "Pushing $ACTUAL_COUNT commit(s) from release-queue to main..."
+
+          # Fast-forward main to the target commit
+          git merge --ff-only "$TARGET_COMMIT"
+
+          # Push changes to origin main
+          git push origin main
+
+          REMAINING=$(echo "$PENDING_COMMITS" | tail -n +"$((ACTUAL_COUNT + 1))" | grep -c . || true)
+          echo "Successfully pushed $ACTUAL_COUNT commit(s). $REMAINING commit(s) remaining in queue."

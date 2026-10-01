@@ -1,6 +1,7 @@
 # Build Artifacts
-Final_*.docx
+*.docx
 *.pdf
+temp_docx/
 merged_draft.md
 project_blueprint.md
 project_audit.md
