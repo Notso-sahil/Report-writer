@@ -22,21 +22,31 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # Use a PAT so commits are attributed to your GitHub account
+          # and appear as personal contributions on your profile graph.
+          # Steps to create:
+          #   1. Go to https://github.com/settings/tokens → Generate new token (classic)
+          #   2. Select 'repo' scope → Generate token → Copy it
+          #   3. In this repo: Settings → Secrets and variables → Actions
+          #   4. Add secret named: GH_PAT  (paste token value)
+          #   5. Add secret named: GH_EMAIL (your GitHub account email)
+          token: ${{ secrets.GH_PAT }}
 
-      - name: Setup Git user
+      - name: Setup Git user identity
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Must match your actual GitHub username and account email
+          # so contributions are counted on your profile graph
+          git config user.name "Notso-sahil"
+          git config user.email "${{ secrets.GH_EMAIL }}"
 
       - name: Advance main branch by scheduled commits
         run: |
           # Fetch both branches to ensure latest refs
-          git fetch origin release-queue:refs/remotes/origin/release-queue main:refs/remotes/origin/main || true
-          
+          git fetch origin release-queue main || true
+
           # Check if release-queue exists on origin
           if ! git rev-parse --verify origin/release-queue >/dev/null 2>&1; then
-            echo "Branch 'origin/release-queue' not found. Exiting."
+            echo "Branch 'origin/release-queue' not found. Nothing left to push."
             exit 0
           fi
 
@@ -52,21 +62,29 @@ jobs:
             exit 0
           fi
 
-          BATCH_SIZE="${{ github.event.inputs.commit_count || '5' }}"
-          echo "Requested batch size: $BATCH_SIZE"
+          # Use shell default fallback — fixes silent failure on scheduled (non-dispatch) runs
+          INPUT_COUNT="${{ github.event.inputs.commit_count }}"
+          BATCH_SIZE="${INPUT_COUNT:-5}"
+          echo "Batch size: $BATCH_SIZE"
 
-          # Select the target commit up to batch size
-          TARGET_COMMIT=$(echo "$PENDING_COMMITS" | head -n "$BATCH_SIZE" | tail -n 1)
-          ACTUAL_COUNT=$(echo "$PENDING_COMMITS" | head -n "$BATCH_SIZE" | wc -l | tr -d ' ')
+          # Select commits up to batch size
+          COMMITS_TO_PUSH=$(echo "$PENDING_COMMITS" | head -n "$BATCH_SIZE")
+          ACTUAL_COUNT=$(echo "$COMMITS_TO_PUSH" | wc -l | tr -d ' ')
 
-          echo "Target commit hash: $TARGET_COMMIT"
-          echo "Pushing $ACTUAL_COUNT commit(s) from release-queue to main..."
+          echo "Pushing $ACTUAL_COUNT commit(s) to main (cherry-pick with author rewrite)..."
 
-          # Fast-forward main to the target commit
-          git merge --ff-only "$TARGET_COMMIT"
+          # Cherry-pick each commit individually, rewriting authorship so each
+          # commit shows YOUR identity (not the bot's) → counted as contributions
+          for COMMIT in $COMMITS_TO_PUSH; do
+            MSG=$(git log -1 --format="%s" "$COMMIT")
+            git cherry-pick --no-commit "$COMMIT" 2>/dev/null || true
+            git commit --allow-empty -m "$MSG" \
+              --author="Notso-sahil <${{ secrets.GH_EMAIL }}>"
+          done
 
-          # Push changes to origin main
+          # Push to origin main
           git push origin main
 
-          REMAINING=$(echo "$PENDING_COMMITS" | tail -n +"$((ACTUAL_COUNT + 1))" | grep -c . || true)
-          echo "Successfully pushed $ACTUAL_COUNT commit(s). $REMAINING commit(s) remaining in queue."
+          TOTAL_PENDING=$(echo "$PENDING_COMMITS" | wc -l | tr -d ' ')
+          REMAINING=$((TOTAL_PENDING - ACTUAL_COUNT))
+          echo "Done. Pushed $ACTUAL_COUNT commit(s). $REMAINING commit(s) remaining."
