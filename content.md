@@ -649,7 +649,7 @@ Mappings**
 
   **GCP Project ID**      `0x7f1000b8`            `server-1-fac9a`
 
-  **API Authorization     `0x7f100048`            `>[REDACTED - KEY REVOKED]`
+  **API Authorization     `0x7f100048`            `[REDACTED - KEY REVOKED]`
   Key**                                           
 
   **GCM Default Sender    `0x7f100047`            `493146615975`
